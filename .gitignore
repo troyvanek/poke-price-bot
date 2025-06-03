@@ -1,1 +1,26 @@
+# Node modules
+node_modules/
+
+# Environment variables
 .env
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS / IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Docker
+*.local
+docker-compose.override.yml
+
+# Build output
+dist/
+build/
+
+# Dependency lock files (optional)
+package-lock.json

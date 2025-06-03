@@ -1,10 +1,8 @@
 version: '3.8'
 
 services:
-  pokepricebot:
+  pokebot:
     build: .
     container_name: pokepricebot
     restart: always
-    environment:
-      - DISCORD_TOKEN=your-discord-token-goes-here
-      - CLIENT_ID=your-client-id-goes-here
+    env_file: .env

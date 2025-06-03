@@ -1,34 +1,64 @@
-// File: src/bot.js
-const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes } = require('discord.js');
-require('dotenv').config();
-const { getAverageEbayPrice } = require('./ebay');
+// File: src/ebay.js
+const axios = require('axios');
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const EBAY_APP_ID = process.env.EBAY_APP_ID;
+const BASE_URL = 'https://svcs.ebay.com/services/search/FindingService/v1';
+const BROWSE_API = 'https://api.ebay.com/buy/browse/v1/item_summary/search';
 
-client.once('ready', () => {
-  console.log(`Logged in as ${client.user.tag}`);
-});
+const headers = {
+  'X-EBAY-C-ENDUSERCTX': 'contextualLocation=country=US',
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${process.env.EBAY_OAUTH_TOKEN}`
+};
 
-client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-  if (interaction.commandName === 'price') {
-    await interaction.deferReply();
-    const query = interaction.options.getString('query');
-    const avg = await getAverageEbayPrice(query);
-    await interaction.editReply(`Average price for **${query}**: $${avg}`);
+async function getAverageEbayPrice(query) {
+  try {
+    const url = `${BROWSE_API}?q=${encodeURIComponent(query)}&filter=conditionIds:{1000|3000},priceCurrency:USD&limit=4&sort=price desc`;
+    const res = await axios.get(url, { headers });
+    const items = res.data.itemSummaries || [];
+    const prices = items.map(item => item.price.value).filter(Number);
+    const avg = prices.length ? (prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2) : 'N/A';
+    return avg;
+  } catch (err) {
+    console.error('Error fetching eBay price:', err);
+    return 'Error';
   }
-});
+}
 
-client.login(process.env.DISCORD_TOKEN);
+async function getTopCards() {
+  const popular = ['Charizard', 'Pikachu', 'Blastoise', 'Lugia', 'Gengar'];
+  const results = [];
 
-// Register the slash command
-const commands = [
-  new SlashCommandBuilder()
-    .setName('price')
-    .setDescription('Get average eBay price for a Pokémon card')
-    .addStringOption(opt =>
-      opt.setName('query').setDescription('Card keywords').setRequired(true))
-].map(cmd => cmd.toJSON());
+  for (const name of popular) {
+    const query = `${name} PSA`;
+    const soldUrl = `${BROWSE_API}?q=${encodeURIComponent(query)}&filter=buyingOptions:{FIXED_PRICE},conditions:{1000|3000},priceCurrency:USD&sort=price desc&limit=1`; // Last sold
+    const binUrl = `${BROWSE_API}?q=${encodeURIComponent(query)}&filter=buyingOptions:{FIXED_PRICE},conditions:{1000|3000}&sort=price asc&limit=1`;
+    const aucUrl = `${BROWSE_API}?q=${encodeURIComponent(query)}&filter=buyingOptions:{AUCTION},conditions:{1000|3000}&sort=price asc&limit=1`;
 
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
+    try {
+      const [sold, bin, auc] = await Promise.all([
+        axios.get(soldUrl, { headers }),
+        axios.get(binUrl, { headers }),
+        axios.get(aucUrl, { headers })
+      ]);
+
+      results.push({
+        name,
+        soldPrice: sold.data.itemSummaries?.[0]?.price?.value || 'N/A',
+        binPrice: bin.data.itemSummaries?.[0]?.price?.value || 'N/A',
+        binLink: bin.data.itemSummaries?.[0]?.itemWebUrl || '#',
+        auctionPrice: auc.data.itemSummaries?.[0]?.price?.value || 'N/A',
+        auctionLink: auc.data.itemSummaries?.[0]?.itemWebUrl || '#'
+      });
+    } catch (err) {
+      console.error(`Error fetching data for ${name}:`, err.message);
+    }
+  }
+
+  return results;
+}
+
+module.exports = {
+  getAverageEbayPrice,
+  getTopCards
+};
