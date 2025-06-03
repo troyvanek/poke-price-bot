@@ -1,0 +1,8 @@
+version: '3.8'
+
+services:
+  pokebot:
+    build: .
+    container_name: pokepricebot
+    restart: always
+    env_file: .env
